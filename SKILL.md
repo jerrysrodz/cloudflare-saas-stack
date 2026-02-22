@@ -49,7 +49,8 @@ goldhold.ai (Pages)          checkout.goldhold.ai (Worker)
 8. Read `references/zip-injection.md` — Dynamic ZIP file injection, CRC32, serial numbers, download tracking
 9. Read `references/website-building.md` — Page architecture, pricing sections, account dashboard, dark-mode design system, email templates
 10. Read `references/remote-operations.md` — CLI/API control of GitHub, Cloudflare, Stripe, GHL, Google, Pinecone
-11. Read `references/security.md` — Pre-launch checklist, common vulnerabilities
+11. Read `references/agent-prompting.md` — How to make agents actually USE GoldHold memory (search, receipts, flush, failure modes)
+12. Read `references/security.md` — Pre-launch checklist, common vulnerabilities
 
 ## Worker Structure
 

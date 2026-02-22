@@ -45,6 +45,7 @@ cloudflare-saas-stack/
 │   ├── zip-injection.md              ← Dynamic ZIP file injection, CRC32, serial numbers, download tracking
 │   ├── website-building.md           ← Page architecture, pricing, account dashboard, design system, email templates
 │   ├── remote-operations.md          ← CLI/API control of GitHub, Cloudflare, Stripe, GHL, Google, Pinecone
+│   ├── agent-prompting.md            ← How to make agents USE memory (enforcement, failure modes, validation)
 │   └── security.md                   ← Pre-launch checklist, common vulnerabilities, hardening
 └── scripts/
     └── magic-links.js                ← Drop-in KV token module (generate, validate, revoke)
