@@ -1,32 +1,40 @@
 ---
 name: cloudflare-saas-stack
-description: Build and deploy SaaS products on the Cloudflare + Stripe + GoHighLevel + GitHub OAuth stack. Use when building landing pages on Cloudflare Pages, checkout/webhook workers on Cloudflare Workers, Stripe billing (subscriptions, trials, promo codes, customer portal), GoHighLevel CRM integration (contacts, pipelines, tags, emails), GitHub OAuth login flows, or any combination. Also use when deploying, configuring DNS, setting worker secrets, or debugging this stack.
+description: Build and deploy SaaS products on the Cloudflare + Stripe + GoHighLevel + GitHub/Google OAuth stack. Use when building landing pages on Cloudflare Pages, checkout/webhook workers on Cloudflare Workers, Stripe billing (subscriptions, trials, promo codes, customer portal, plan upgrades/downgrades), GoHighLevel CRM integration (contacts, pipelines, tags, emails), GitHub or Google OAuth login flows, JWT token auth, managed API proxies, Pinecone memory provisioning, or any combination. Also use when deploying, configuring DNS, setting worker secrets, or debugging this stack.
 ---
 
 # Cloudflare SaaS Stack
 
-Full-stack SaaS deployment using Cloudflare Pages (static site) + Workers (API/checkout) + Stripe (billing) + GoHighLevel (CRM/email) + GitHub OAuth (auth).
+Full-stack SaaS deployment using Cloudflare Pages (static site) + Workers (API/checkout/auth/proxy) + Stripe (billing) + GoHighLevel (CRM/email) + GitHub/Google OAuth (auth) + JWT (sessions).
 
 ## Architecture
 
 ```
 goldhold.ai (Pages)          checkout.goldhold.ai (Worker)
-┌─────────────────┐          ┌──────────────────────────────┐
-│ Static HTML/CSS  │──POST──▶│ /checkout  → Stripe session  │
-│ Tailwind (local) │         │ /webhook   → Stripe webhook  │
-│ No frameworks    │         │ /signup    → GHL contact      │
-│ Self-hosted fonts│         │ /portal    → Billing portal   │
-└─────────────────┘          │ /auth/*    → GitHub OAuth     │
-                             │ /unsub     → Email unsub      │
-                             └──────────────────────────────┘
-                                    │           │
-                          ┌─────────┘           └──────────┐
-                          ▼                                ▼
-                    Stripe API                      GHL API
-                    - Checkout Sessions             - Contacts
-                    - Subscriptions                 - Tags
-                    - Customer Portal               - Pipelines
-                    - Webhooks                      - Email (transactional)
+┌─────────────────┐          ┌──────────────────────────────────┐
+│ Static HTML/CSS  │──POST──▶│ /checkout     → Stripe session   │
+│ Tailwind (local) │         │ /webhook      → Stripe webhook   │
+│ No frameworks    │         │ /signup       → GHL contact       │
+│ Self-hosted fonts│         │ /portal       → Billing portal    │
+│ Account dashboard│         │ /account      → Account status    │
+└─────────────────┘          │ /auth/github  → GitHub OAuth      │
+                             │ /auth/google  → Google OAuth      │
+                             │ /auth/verify  → JWT verification  │
+                             │ /v1/memory/*  → Managed API proxy │
+                             │ /pinecone/*   → BYOK proxy        │
+                             │ /upgrade      → Plan change       │
+                             │ /download     → Dynamic ZIP       │
+                             │ /unsub        → Email unsub       │
+                             └──────────────────────────────────┘
+                                    │           │           │
+                          ┌─────────┘           │           └──────────┐
+                          ▼                     ▼                      ▼
+                    Stripe API           Pinecone API            GHL API
+                    - Checkout           - Vector upsert         - Contacts
+                    - Subscriptions      - Query/search          - Tags
+                    - Customer Portal    - Namespace isolation   - Pipelines
+                    - Webhooks           - Embedding             - Email
+                    - Plan switching     - Index stats
 ```
 
 ## Quick Start
@@ -34,8 +42,10 @@ goldhold.ai (Pages)          checkout.goldhold.ai (Worker)
 1. Read `references/cloudflare.md` for Pages + Workers setup
 2. Read `references/stripe.md` for billing integration
 3. Read `references/ghl.md` for CRM/email integration
-4. Read `references/github-oauth.md` for auth flow
-5. Read `references/security.md` for hardening checklist
+4. Read `references/github-oauth.md` for auth flows (GitHub + Google)
+5. Read `references/jwt-auth.md` for JWT token system
+6. Read `references/managed-memory.md` for Pinecone proxy + provisioning
+7. Read `references/security.md` for hardening checklist
 
 ## Worker Structure
 
@@ -49,16 +59,24 @@ export default {
 
     // CORS preflight
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: { ...cors, 'Access-Control-Allow-Methods': 'POST,GET,OPTIONS' } });
+      return new Response(null, { headers: { ...cors, 'Access-Control-Allow-Methods': 'POST,GET,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Pinecone-Key' } });
     }
 
     // Route dispatch
-    if (url.pathname === '/checkout' && request.method === 'POST') { /* Stripe checkout */ }
-    if (url.pathname === '/webhook' && request.method === 'POST') { /* Stripe webhook */ }
-    if (url.pathname === '/signup' && request.method === 'POST') { /* Free tier signup */ }
-    if (url.pathname === '/portal' && request.method === 'POST') { /* Billing portal */ }
-    if (url.pathname === '/auth/github') { /* OAuth redirect */ }
-    if (url.pathname === '/auth/callback') { /* OAuth callback */ }
+    if (url.pathname === '/checkout') { /* Stripe checkout */ }
+    if (url.pathname === '/webhook') { /* Stripe webhook */ }
+    if (url.pathname === '/signup') { /* Free tier signup */ }
+    if (url.pathname === '/portal') { /* Billing portal */ }
+    if (url.pathname === '/account') { /* Account status (POST) */ }
+    if (url.pathname === '/upgrade') { /* Plan upgrade/downgrade */ }
+    if (url.pathname === '/auth/github') { /* GitHub OAuth redirect */ }
+    if (url.pathname === '/auth/callback') { /* GitHub OAuth callback → JWT */ }
+    if (url.pathname === '/auth/google') { /* Google OAuth redirect */ }
+    if (url.pathname === '/auth/google/callback') { /* Google callback → JWT */ }
+    if (url.pathname === '/auth/verify') { /* JWT verify + account data */ }
+    if (url.pathname.startsWith('/v1/memory/')) { /* Managed memory proxy */ }
+    if (url.pathname.startsWith('/pinecone/')) { /* BYOK Pinecone proxy */ }
+    if (url.pathname === '/download') { /* Dynamic ZIP with injected config */ }
   }
 }
 ```
@@ -74,6 +92,9 @@ npx wrangler secret put STRIPE_WEBHOOK_SECRET
 npx wrangler secret put GHL_API_KEY
 npx wrangler secret put GITHUB_CLIENT_SECRET
 npx wrangler secret put GITHUB_TOKEN
+npx wrangler secret put JWT_SECRET              # HMAC key for JWT signing
+npx wrangler secret put GOOGLE_CLIENT_SECRET     # Google OAuth
+npx wrangler secret put MANAGED_PINECONE_KEY     # Server-side Pinecone key for managed users
 ```
 
 Environment variables go in `wrangler.toml`:
@@ -87,6 +108,10 @@ SUCCESS_URL = "https://yourdomain.com/thank-you"
 CANCEL_URL = "https://yourdomain.com"
 GHL_LOCATION_ID = "..."
 GITHUB_CALLBACK_URL = "https://api.yourdomain.com/auth/callback"
+GOOGLE_CLIENT_ID = "..."
+GOOGLE_CALLBACK_URL = "https://api.yourdomain.com/auth/google/callback"
+MANAGED_PINECONE_HOST = "your-index-abc123.svc.pinecone.io"
+MANAGED_PINECONE_INDEX = "your-managed-index"
 
 [[kv_namespaces]]
 binding = "KV"
@@ -106,6 +131,21 @@ cd worker; npx wrangler deploy
 npx wrangler tail
 ```
 
+## Dual-Tier Architecture
+
+Two user classes, same dashboard, different plumbing:
+
+| Feature | BYOK (Free/Monthly) | Managed (Annual/Enterprise) |
+|---------|---------------------|-----------------------------|
+| Pinecone key | User provides their own | Server-side, user never sees it |
+| Auth header | `X-Pinecone-Key: <user_key>` | `Authorization: Bearer <JWT>` |
+| Proxy path | `/pinecone/host/<host>/*` | `/v1/memory/*` |
+| Namespace | User chooses any | Server-enforced per user |
+| Dashboard | Same UI | Same UI |
+| Setup | Enter key + select index | Click "Set Up Managed Data" |
+
+See `references/managed-memory.md` for full implementation.
+
 ## Rate Limiting (KV-based)
 
 No external dependencies — use the KV namespace already bound to the worker:
@@ -121,12 +161,6 @@ async function checkRateLimit(key, maxRequests, windowSeconds, env) {
     : { count: data.count + 1, start: data.start };
   await env.KV.put(rlKey, JSON.stringify(newData), { expirationTtl: windowSeconds });
   return true;
-}
-
-// Usage: 10 requests per 5 minutes per IP
-const ip = request.headers.get('cf-connecting-ip');
-if (!await checkRateLimit(`checkout:${ip}`, 10, 300, env)) {
-  return new Response(JSON.stringify({ error: 'Too many requests' }), { status: 429 });
 }
 ```
 
@@ -152,3 +186,8 @@ function isValidEmail(email) {
 | Worker CORS missing → browser blocks requests | Return CORS headers on every response + OPTIONS |
 | GHL custom field keys wrong → silent data loss | Verify field keys in GHL Settings → Custom Fields |
 | Stripe webhook signature not verified → security hole | Always verify with `crypto.subtle` |
+| JWT `atob` padding issues | Add `=` padding: `body + '='.repeat((4 - body.length % 4) % 4)` |
+| Google OAuth missing `openid` scope | Always include `openid email profile` |
+| Managed users sending namespace client-side | Server MUST override namespace — never trust client |
+| BYOK proxy leaking to wrong Pinecone host | Validate host format before proxying |
+| Plan check on provision bypassed | Always verify active Stripe subscription server-side |

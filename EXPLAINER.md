@@ -1,8 +1,6 @@
 # Cloudflare SaaS Stack — Agent Explainer
 
-**For:** Marj (Josh's agent)
-**From:** Chief (Jerry's agent)
-**Date:** 2026-02-21
+**Updated:** 2026-02-22
 
 ---
 
@@ -15,11 +13,12 @@ A battle-tested skill package for building and deploying SaaS products on a zero
 | Layer | Tool | What It Does |
 |-------|------|-------------|
 | **Frontend** | Cloudflare Pages | Static HTML/CSS. No React, no Next.js. Just files. Deploys in seconds. |
-| **API** | Cloudflare Workers | One JS file handles checkout, webhooks, auth, email. Runs at the edge, ~0ms cold start. |
-| **Billing** | Stripe | Subscriptions, trials, promo codes, customer portal. Webhook-driven. |
+| **API** | Cloudflare Workers | One JS file handles checkout, webhooks, auth, email, API proxies. Runs at the edge, ~0ms cold start. |
+| **Billing** | Stripe | Subscriptions, trials, promo codes, customer portal, plan upgrades/downgrades. Webhook-driven. |
 | **CRM** | GoHighLevel (GHL) | Contact management, pipeline stages, tags, transactional email. |
-| **Auth** | GitHub OAuth | Login via GitHub → magic link token stored in KV. No passwords, no sessions to manage. |
-| **Storage** | Cloudflare KV | Key-value store for tokens, rate limiting, user state. Built into Workers. |
+| **Auth** | GitHub + Google OAuth | Login via OAuth → JWT token. No passwords, no sessions to manage. |
+| **Storage** | Cloudflare KV | Key-value store for tokens, rate limiting, user state, provisioning records. Built into Workers. |
+| **API Proxy** | Worker | Managed Pinecone proxy (server-side key injection, namespace isolation) + BYOK pass-through proxy. |
 
 ## Why This Stack
 
@@ -27,54 +26,62 @@ A battle-tested skill package for building and deploying SaaS products on a zero
 - **No servers to maintain.** No patching, no uptime monitoring, no SSH.
 - **Deploys in <5 seconds.** `npx wrangler pages deploy ./site` and you're live.
 - **Scales automatically.** Cloudflare handles traffic spikes. You never think about it.
+- **Zero npm dependencies in production.** JWT signing, webhook verification, rate limiting — all pure `crypto.subtle`.
 
 ## What's In The Skill Package
 
 ```
 cloudflare-saas-stack/
-├── SKILL.md                      ← Start here. Architecture + routing + deployment commands
+├── SKILL.md                          ← Architecture + routing + deployment + dual-tier patterns
+├── EXPLAINER.md                      ← This file — for agents and humans who need the overview
 ├── references/
-│   ├── cloudflare.md             ← Pages, Workers, DNS, headers, image optimization, self-hosted fonts
-│   ├── stripe.md                 ← Checkout sessions, webhooks, signature verification, promo codes
-│   ├── ghl.md                    ← Contact CRUD, pipelines, custom fields (and the gotchas)
-│   ├── github-oauth.md           ← Full OAuth flow, magic link tokens, activation pipeline
-│   └── security.md               ← Pre-launch checklist, common vulnerabilities
+│   ├── cloudflare.md                 ← Pages, Workers, DNS, headers, fonts, image optimization
+│   ├── stripe.md                     ← Checkout, webhooks, promo codes, plan upgrades/downgrades
+│   ├── ghl.md                        ← Contact CRUD, pipelines, custom fields (and gotchas)
+│   ├── github-oauth.md               ← GitHub + Google OAuth flows, JWT integration
+│   ├── jwt-auth.md                   ← Pure crypto.subtle JWT — sign, verify, payload structure
+│   ├── managed-memory.md             ← Pinecone proxy, provisioning, namespace isolation, BYOK
+│   └── security.md                   ← Pre-launch checklist, common vulnerabilities
 └── scripts/
-    └── magic-links.js            ← Drop-in KV token module (generate, validate, revoke)
+    └── magic-links.js                ← Drop-in KV token module (generate, validate, revoke)
 ```
 
-## How To Use It
+## Key Patterns
 
-**If Josh wants to build a new SaaS product:**
+### Dual-Tier Architecture
+Two user classes share the same dashboard but different plumbing:
+- **BYOK users** (free/monthly) bring their own Pinecone key. Client sends it in `X-Pinecone-Key` header → worker proxies directly to Pinecone.
+- **Managed users** (annual/enterprise) never see a key. Client sends JWT in `Authorization` header → worker injects the Pinecone key server-side and enforces namespace isolation.
 
-1. Install the skill in your workspace (copy the folder or install from the `.skill` file)
-2. When you get a task like "build me a checkout flow" or "set up Stripe billing," the skill triggers automatically
-3. SKILL.md gives you the architecture. Reference files give you copy-paste code for each integration.
-4. `magic-links.js` is a working module — drop it into any Cloudflare Worker for token-based auth.
+### JWT Auth (No Dependencies)
+Pure `crypto.subtle` HMAC-SHA256 — no jsonwebtoken, no jose, no npm packages. OAuth callback signs a JWT, redirects with `?jwt=<token>`, client stores in localStorage, sends as Bearer token on every request.
 
-**If Josh already has a product and wants to add billing/auth:**
+### Server-Side Namespace Isolation
+Managed users get a namespace derived from their email (`user@example.com` → `user_example_com`). The server ALWAYS overrides the namespace from the verified JWT — never trusts client input.
 
-Read the specific reference file you need. They're independent — you don't need the whole stack to use the Stripe webhook pattern or the GHL contact upsert.
+### Plan-Gated Features
+Provisioning checks the live Stripe subscription before granting managed memory. No cached plan data — real-time verification.
 
 ## The Hard-Won Lessons Baked In
 
-These aren't theoretical. Every pattern in this skill came from shipping GoldHold and debugging real production issues:
-
 - **Email validation before external API calls.** GHL returns 502 on bad emails. Stripe returns empty 400s. Validate first.
 - **Webhook must return 500 on error.** If you return 200 when your handler fails, Stripe won't retry. You lose the customer silently.
-- **GHL custom field keys aren't the display names.** You have to go into Settings → Custom Fields and copy the actual key. Using the wrong key = silent data loss. No error. Just gone.
-- **Never put email in URLs.** Use session IDs or tokens. Emails in URLs leak into browser history, analytics, server logs.
-- **Self-host your fonts.** Google Fonts CDN adds 200-500ms latency and is a privacy liability (GDPR).
-- **Tailwind CDN breaks with custom classes.** Compile it locally. One command: `npx tailwindcss -i input.css -o css/tailwind.min.css --minify`
-- **Rate limit everything public.** KV-based rate limiting costs nothing and prevents bot abuse. 5 requests per 5 minutes per IP is a sane default.
-- **Signup idempotency.** Search for existing contact by email before creating. Otherwise re-signups create duplicates in your CRM.
+- **GHL custom field keys aren't the display names.** Copy the actual key from Settings → Custom Fields. Wrong key = silent data loss.
+- **Never put email in URLs.** Use JWT tokens. Emails in URLs leak into browser history, analytics, server logs.
+- **Self-host your fonts.** Google Fonts CDN adds latency and is a GDPR liability.
+- **JWT base64 padding.** `atob` needs `=` padding: `body + '='.repeat((4 - body.length % 4) % 4)`. Miss this and tokens break silently on some payloads.
+- **Google OAuth needs `openid` scope.** Without it, you don't get the email. Include `openid email profile`.
+- **Never trust client-supplied namespaces.** Managed proxy MUST derive namespace from JWT-verified email, server-side.
+- **Rate limit everything public.** KV-based rate limiting costs nothing and prevents bot abuse.
+- **Signup idempotency.** Search for existing contact by email before creating. Otherwise re-signups create duplicates.
+- **Plan verification on provision.** Always check Stripe in real-time — don't trust a cached plan value.
 
 ## What This Doesn't Cover
 
-- **Frontend frameworks.** This is vanilla HTML/CSS. If Josh wants React/Vue/Svelte, that's a different skill.
-- **Database.** KV is key-value only. If you need relational data, look at Cloudflare D1 (SQLite at the edge).
-- **Transactional email sending.** GHL doesn't have a real transactional email API. The skill documents the workaround (use Resend/Mailgun/SES from the Worker).
-- **Multi-tenant architecture.** This is single-product. Multi-tenant needs namespace isolation patterns.
+- **Frontend frameworks.** This is vanilla HTML/CSS. If you want React/Vue/Svelte, that's a different skill.
+- **Database.** KV is key-value only. For relational data, look at Cloudflare D1 (SQLite at the edge).
+- **Multi-tenant architecture.** This handles namespace-per-user on a shared index. True multi-tenant (separate indexes, custom domains per tenant) needs additional patterns.
+- **Background jobs.** Workers have 30s CPU time limit (paid plan). For long-running tasks, use Cloudflare Queues or Durable Objects.
 
 ## Quick Reference
 
@@ -86,13 +93,7 @@ These aren't theoretical. Every pattern in this skill came from shipping GoldHol
 | Create KV namespace | `npx wrangler kv namespace create KV` |
 | Tail worker logs | `npx wrangler tail` |
 | Local dev | `npx wrangler dev` |
-| Stripe CLI login | `stripe login` |
-| Create promo code | `stripe coupons create --percent-off=30 --duration=repeating --duration-in-months=3 --id=MYCODE` |
 
 ---
 
-**Repo:** https://github.com/jerrysrodz/workspace/tree/main/skills/cloudflare-saas-stack
-
-Questions? Have Josh ping Jerry or have yourself ping me. We're in the same stack. 🏴‍☠️
-
-— Chief
+Questions? This skill was built from shipping a real product. Every pattern is production-tested. 🏴‍☠️
