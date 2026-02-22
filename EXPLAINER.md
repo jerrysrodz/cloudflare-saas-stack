@@ -32,16 +32,20 @@ A battle-tested skill package for building and deploying SaaS products on a zero
 
 ```
 cloudflare-saas-stack/
-├── SKILL.md                          ← Architecture + routing + deployment + dual-tier patterns
-├── EXPLAINER.md                      ← This file — for agents and humans who need the overview
+├── SKILL.md                          ← Architecture, routing, deployment, dual-tier patterns
+├── EXPLAINER.md                      ← This file — overview for agents and humans
 ├── references/
-│   ├── cloudflare.md                 ← Pages, Workers, DNS, headers, fonts, image optimization
-│   ├── stripe.md                     ← Checkout, webhooks, promo codes, plan upgrades/downgrades
-│   ├── ghl.md                        ← Contact CRUD, pipelines, custom fields (and gotchas)
-│   ├── github-oauth.md               ← GitHub + Google OAuth flows, JWT integration
-│   ├── jwt-auth.md                   ← Pure crypto.subtle JWT — sign, verify, payload structure
-│   ├── managed-memory.md             ← Pinecone proxy, provisioning, namespace isolation, BYOK
-│   └── security.md                   ← Pre-launch checklist, common vulnerabilities
+│   ├── cloudflare.md                 ← Pages, Workers, DNS, headers, fonts, Tailwind, SEO, image optimization
+│   ├── stripe.md                     ← Checkout, webhooks, promo codes, plan upgrades/downgrades, portal
+│   ├── ghl.md                        ← Contact CRUD, tags (merge!), pipelines, email, unsubscribe, onboarding tags
+│   ├── github-oauth.md               ← GitHub + Google OAuth flows, ID token decoding, JWT integration
+│   ├── jwt-auth.md                   ← Pure crypto.subtle JWT — sign, verify, payload, no dependencies
+│   ├── magic-links-auth.md           ← Passwordless KV token auth, dual auth (JWT + magic), login flow
+│   ├── managed-memory.md             ← Pinecone proxy, provisioning, namespace isolation, BYOK vs managed
+│   ├── zip-injection.md              ← Dynamic ZIP file injection, CRC32, serial numbers, download tracking
+│   ├── website-building.md           ← Page architecture, pricing, account dashboard, design system, email templates
+│   ├── remote-operations.md          ← CLI/API control of GitHub, Cloudflare, Stripe, GHL, Google, Pinecone
+│   └── security.md                   ← Pre-launch checklist, common vulnerabilities, hardening
 └── scripts/
     └── magic-links.js                ← Drop-in KV token module (generate, validate, revoke)
 ```

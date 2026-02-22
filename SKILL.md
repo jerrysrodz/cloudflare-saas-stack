@@ -39,13 +39,17 @@ goldhold.ai (Pages)          checkout.goldhold.ai (Worker)
 
 ## Quick Start
 
-1. Read `references/cloudflare.md` for Pages + Workers setup
-2. Read `references/stripe.md` for billing integration
-3. Read `references/ghl.md` for CRM/email integration
-4. Read `references/github-oauth.md` for auth flows (GitHub + Google)
-5. Read `references/jwt-auth.md` for JWT token system
-6. Read `references/managed-memory.md` for Pinecone proxy + provisioning
-7. Read `references/security.md` for hardening checklist
+1. Read `references/cloudflare.md` — Pages, Workers, DNS, headers, fonts, image optimization, Tailwind, SEO
+2. Read `references/stripe.md` — Checkout, webhooks, promo codes, plan upgrades/downgrades, customer portal
+3. Read `references/ghl.md` — Contact CRUD, tags (merge pattern!), pipelines, email via Conversations API, unsubscribe flow
+4. Read `references/github-oauth.md` — GitHub + Google OAuth flows, ID token decoding, JWT integration
+5. Read `references/jwt-auth.md` — Pure `crypto.subtle` JWT sign/verify, payload structure, no dependencies
+6. Read `references/magic-links-auth.md` — Passwordless login via KV tokens, dual auth (JWT + magic link)
+7. Read `references/managed-memory.md` — Pinecone proxy, provisioning, namespace isolation, BYOK vs managed routing
+8. Read `references/zip-injection.md` — Dynamic ZIP file injection, CRC32, serial numbers, download tracking
+9. Read `references/website-building.md` — Page architecture, pricing sections, account dashboard, dark-mode design system, email templates
+10. Read `references/remote-operations.md` — CLI/API control of GitHub, Cloudflare, Stripe, GHL, Google, Pinecone
+11. Read `references/security.md` — Pre-launch checklist, common vulnerabilities
 
 ## Worker Structure
 
